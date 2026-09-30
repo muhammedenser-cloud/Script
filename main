@@ -1,0 +1,1001 @@
+--[================================================================]--
+--  ENSER SCRIPT HUB (v2.1) - MM2 FULL FIXED & NEON RED UI REDESIGN
+--  Client-Side | Anti-Cheat Safe | Full Visual Match | Zero-Bug
+--[================================================================]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local GuiName = "EnserScriptHub_V2"
+
+-- Multi-Container Safe UI Attachment
+local TargetGuiParent = LocalPlayer:WaitForChild("PlayerGui")
+pcall(function()
+	local testGui = Instance.new("ScreenGui")
+	testGui.Name = "EnserTestGui"
+	testGui.Parent = CoreGui
+	testGui:Destroy()
+	TargetGuiParent = CoreGui
+end)
+
+local function CleanupOldGuis(parent)
+	if parent then
+		local g = parent:FindFirstChild(GuiName)
+		if g then g:Destroy() end
+		local n = parent:FindFirstChild(GuiName .. "_Notifications")
+		if n then n:Destroy() end
+	end
+end
+
+CleanupOldGuis(CoreGui)
+CleanupOldGuis(LocalPlayer:FindFirstChild("PlayerGui"))
+
+-- ====================================================================
+-- KONFİGÜRASYON VE BİREBİR NEON RED TEMA
+-- ====================================================================
+local THEME = {
+	Background = Color3.fromRGB(12, 10, 15),
+	SidebarBg = Color3.fromRGB(16, 12, 18),
+	CardBg = Color3.fromRGB(20, 14, 22),
+	NeonRed = Color3.fromRGB(255, 30, 60),
+	NeonRedGlow = Color3.fromRGB(255, 50, 80),
+	NeonGreen = Color3.fromRGB(0, 255, 120),
+	Text = Color3.fromRGB(240, 240, 255),
+	SubText = Color3.fromRGB(140, 140, 160),
+	ActiveText = Color3.fromRGB(0, 255, 120),
+	InactiveText = Color3.fromRGB(180, 50, 60)
+}
+
+local CONFIG = {
+	AimbotSpeed = 16,
+	AimbotFov = 300,
+	KillAuraDistance = 18,
+	AutoShootDistance = 85,
+	GunTpSpeed = 0.25,
+	BulletSpeed = 350,
+	KillAuraCooldown = 0.15,
+	AutoShootCooldown = 0.4
+}
+
+local States = {
+	AimBot = false,
+	ESP = false,
+	SpeedBoost = false,
+	AutoShoot = false,
+	KillAura = false,
+	AutoGun = false
+}
+
+local Connections = {}
+local EspCache = {}
+local lastAuraTime = 0
+local lastShootTime = 0
+local lastEspUpdate = 0
+local isTeleporting = false
+local currentActiveTitle = "NONE"
+
+-- ====================================================================
+-- BİLDİRİM SİSTEMİ
+-- ====================================================================
+local NotificationGui = Instance.new("ScreenGui")
+NotificationGui.Name = GuiName .. "_Notifications"
+NotificationGui.ResetOnSpawn = false
+NotificationGui.Parent = TargetGuiParent
+
+local NotifContainer = Instance.new("Frame")
+NotifContainer.Size = UDim2.new(0, 240, 1, -20)
+NotifContainer.Position = UDim2.new(1, -250, 0, 10)
+NotifContainer.BackgroundTransparency = 1
+NotifContainer.Parent = NotificationGui
+
+local NotifLayout = Instance.new("UIListLayout")
+NotifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotifLayout.Padding = UDim.new(0, 8)
+NotifLayout.Parent = NotifContainer
+
+local function SendNotification(title, text, duration)
+	if not NotificationGui or not NotificationGui.Parent then return end
+	duration = duration or 2.5
+
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, 0, 0, 48)
+	card.BackgroundColor3 = THEME.CardBg
+	card.BackgroundTransparency = 1
+	card.Parent = NotifContainer
+
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = THEME.NeonRed
+	stroke.Thickness = 1
+	stroke.Transparency = 1
+	stroke.Parent = card
+
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.Size = UDim2.new(1, -10, 0, 18)
+	titleLbl.Position = UDim2.new(0, 10, 0, 4)
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Text = title
+	titleLbl.TextColor3 = THEME.NeonRed
+	titleLbl.TextTransparency = 1
+	titleLbl.Font = Enum.Font.GothamBold
+	titleLbl.TextSize = 12
+	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	titleLbl.Parent = card
+
+	local textLbl = Instance.new("TextLabel")
+	textLbl.Size = UDim2.new(1, -10, 0, 20)
+	textLbl.Position = UDim2.new(0, 10, 0, 22)
+	textLbl.BackgroundTransparency = 1
+	textLbl.Text = text
+	textLbl.TextColor3 = THEME.Text
+	textLbl.TextTransparency = 1
+	textLbl.Font = Enum.Font.Gotham
+	textLbl.TextSize = 11
+	textLbl.TextXAlignment = Enum.TextXAlignment.Left
+	textLbl.Parent = card
+
+	TweenService:Create(card, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
+	TweenService:Create(stroke, TweenInfo.new(0.2), {Transparency = 0.2}):Play()
+	TweenService:Create(titleLbl, TweenInfo.new(0.2), {TextTransparency = 0}):Play()
+	TweenService:Create(textLbl, TweenInfo.new(0.2), {TextTransparency = 0}):Play()
+
+	task.delay(duration, function()
+		if card and card.Parent then
+			local hideTween = TweenService:Create(card, TweenInfo.new(0.2), {BackgroundTransparency = 1})
+			TweenService:Create(stroke, TweenInfo.new(0.2), {Transparency = 1}):Play()
+			TweenService:Create(titleLbl, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+			TweenService:Create(textLbl, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+
+			hideTween:Play()
+			hideTween.Completed:Connect(function()
+				card:Destroy()
+			end)
+		end
+	end)
+end
+
+-- ====================================================================
+-- MM2 UTILITIES & ROLE DETECTION
+-- ====================================================================
+local function IsKnife(item)
+	if not item or not item:IsA("Tool") then return false end
+	if item.Name == "Knife" or item:FindFirstChild("KnifeServer") or item:FindFirstChild("KnifeScript") then
+		return true
+	end
+	return false
+end
+
+local function IsGun(item)
+	if not item or not item:IsA("Tool") then return false end
+	if item.Name == "Gun" or item.Name == "Revolver" or item:FindFirstChild("GunServer") or item:FindFirstChild("GunScript") then
+		return true
+	end
+	return false
+end
+
+local function GetRole(player)
+	if not player or not player.Parent then return "Innocent" end
+	local char = player.Character
+	local backpack = player:FindFirstChildOfClass("Backpack")
+
+	if char then
+		for _, child in ipairs(char:GetChildren()) do
+			if IsKnife(child) then return "Murderer" end
+			if IsGun(child) then return "Sheriff" end
+		end
+	end
+
+	if backpack then
+		for _, child in ipairs(backpack:GetChildren()) do
+			if IsKnife(child) then return "Murderer" end
+			if IsGun(child) then return "Sheriff" end
+		end
+	end
+
+	return "Innocent"
+end
+
+local function HasLineOfSight(originPos, targetPart)
+	if not originPos or not targetPart or not targetPart.Parent then return false end
+
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+	rayParams.IgnoreWater = true
+
+	local direction = targetPart.Position - originPos
+	local result = Workspace:Raycast(originPos, direction, rayParams)
+
+	return result == nil
+end
+
+local function GetPlayerByRole(roleName)
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer and GetRole(p) == roleName then
+			if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+				local hum = p.Character:FindFirstChildOfClass("Humanoid")
+				if hum and hum.Health > 0 then
+					return p
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local function GetClosestTarget(maxDistance)
+	local myChar = LocalPlayer.Character
+	if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil, maxDistance end
+	local myRoot = myChar.HumanoidRootPart
+
+	local closestPlayer = nil
+	local shortestDist = maxDistance or math.huge
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+			local hum = p.Character:FindFirstChildOfClass("Humanoid")
+			if hum and hum.Health > 0 then
+				local dist = (myRoot.Position - p.Character.HumanoidRootPart.Position).Magnitude
+				if dist < shortestDist then
+					shortestDist = dist
+					closestPlayer = p
+				end
+			end
+		end
+	end
+	return closestPlayer, shortestDist
+end
+
+-- ====================================================================
+-- ESP SİSTEMİ
+-- ====================================================================
+local function ClearPlayerESP(plrName)
+	if EspCache[plrName] then
+		pcall(function()
+			if EspCache[plrName].Highlight then EspCache[plrName].Highlight:Destroy() end
+			if EspCache[plrName].Billboard then EspCache[plrName].Billboard:Destroy() end
+		end)
+		EspCache[plrName] = nil
+	end
+end
+
+local function ClearAllESP()
+	for name, _ in pairs(EspCache) do
+		ClearPlayerESP(name)
+	end
+	table.clear(EspCache)
+end
+
+local function UpdateESP()
+	if not States.ESP then
+		ClearAllESP()
+		return
+	end
+
+	local now = os.clock()
+	local updateText = (now - lastEspUpdate) >= 0.05
+	if updateText then lastEspUpdate = now end
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			local char = p.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+			if char and root and hum and hum.Health > 0 then
+				local role = GetRole(p)
+				local color = THEME.NeonGreen
+				if role == "Murderer" then
+					color = THEME.NeonRed
+				elseif role == "Sheriff" then
+					color = Color3.fromRGB(0, 150, 255)
+				end
+
+				local cacheData = EspCache[p.Name] or {}
+
+				if cacheData.LastChar ~= char then
+					ClearPlayerESP(p.Name)
+					cacheData = {}
+				end
+
+				if not cacheData.Highlight or not cacheData.Highlight.Parent then
+					local hl = Instance.new("Highlight")
+					hl.Name = "ESP_HL_" .. p.Name
+					hl.FillTransparency = 0.5
+					hl.OutlineTransparency = 0.1
+					hl.Parent = TargetGuiParent
+					cacheData.Highlight = hl
+				end
+				cacheData.Highlight.Adornee = char
+				cacheData.Highlight.FillColor = color
+				cacheData.Highlight.OutlineColor = color
+
+				if not cacheData.Billboard or not cacheData.Billboard.Parent then
+					local bb = Instance.new("BillboardGui")
+					bb.Name = "ESP_BB_" .. p.Name
+					bb.Size = UDim2.new(0, 150, 0, 30)
+					bb.AlwaysOnTop = true
+					bb.StudsOffset = Vector3.new(0, 3, 0)
+
+					local lbl = Instance.new("TextLabel")
+					lbl.Name = "InfoLabel"
+					lbl.Size = UDim2.new(1, 0, 1, 0)
+					lbl.BackgroundTransparency = 1
+					lbl.Font = Enum.Font.GothamBold
+					lbl.TextSize = 11
+					lbl.Parent = bb
+
+					bb.Parent = TargetGuiParent
+					cacheData.Billboard = bb
+				end
+
+				cacheData.Billboard.Adornee = root
+
+				if updateText then
+					local dist = math.floor((Camera.CFrame.Position - root.Position).Magnitude)
+					local infoLbl = cacheData.Billboard:FindFirstChild("InfoLabel")
+					if infoLbl then
+						infoLbl.Text = string.format("%s\n[%s] - %dm", p.Name, role:upper(), dist)
+						infoLbl.TextColor3 = color
+					end
+				end
+
+				cacheData.LastChar = char
+				EspCache[p.Name] = cacheData
+			else
+				ClearPlayerESP(p.Name)
+			end
+		end
+	end
+end
+
+-- ====================================================================
+-- COMBAT MOTORU
+-- ====================================================================
+local function ProcessAimbot(dt)
+	if not States.AimBot then return end
+
+	local myRole = GetRole(LocalPlayer)
+	local targetPlayer = nil
+
+	if myRole == "Sheriff" or myRole == "Innocent" then
+		targetPlayer = GetPlayerByRole("Murderer")
+	elseif myRole == "Murderer" then
+		targetPlayer, _ = GetClosestTarget(250)
+	end
+
+	if targetPlayer and targetPlayer.Character then
+		local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if targetRoot then
+			local screenPos, onScreen = Camera:WorldToViewportPoint(targetRoot.Position)
+			if onScreen then
+				local mousePos = UserInputService:GetMouseLocation()
+				local fovDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+
+				if fovDist <= CONFIG.AimbotFov then
+					local dist = (Camera.CFrame.Position - targetRoot.Position).Magnitude
+					local timeToTarget = dist / CONFIG.BulletSpeed
+					local predictedPos = targetRoot.Position + (targetRoot.Velocity * timeToTarget)
+					local camPos = Camera.CFrame.Position
+
+					if (camPos - predictedPos).Magnitude > 0.1 then
+						local targetCFrame = CFrame.lookAt(camPos, predictedPos)
+						local lerpFactor = 1 - math.exp(-CONFIG.AimbotSpeed * dt)
+						Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(lerpFactor, 0.01, 1))
+					end
+				end
+			end
+		end
+	end
+end
+
+local function ProcessKillAura()
+	if not States.KillAura or GetRole(LocalPlayer) ~= "Murderer" then return end
+	local now = os.clock()
+	if now - lastAuraTime < CONFIG.KillAuraCooldown then return end
+
+	local myChar = LocalPlayer.Character
+	if not myChar then return end
+	local hum = myChar:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return end
+
+	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+	local knife = nil
+
+	for _, item in ipairs(myChar:GetChildren()) do
+		if IsKnife(item) then knife = item break end
+	end
+	if not knife and backpack then
+		for _, item in ipairs(backpack:GetChildren()) do
+			if IsKnife(item) then knife = item break end
+		end
+	end
+
+	if knife then
+		local target, dist = GetClosestTarget(CONFIG.KillAuraDistance)
+		if target and dist <= CONFIG.KillAuraDistance then
+			lastAuraTime = now
+			if knife.Parent ~= myChar then
+				hum:EquipTool(knife)
+				task.wait(0.04)
+			end
+			knife:Activate()
+		end
+	end
+end
+
+local function ProcessAutoShoot()
+	if not States.AutoShoot or GetRole(LocalPlayer) ~= "Sheriff" then return end
+	local now = os.clock()
+	if now - lastShootTime < CONFIG.AutoShootCooldown then return end
+
+	local myChar = LocalPlayer.Character
+	if not myChar then return end
+	local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+	local hum = myChar:FindFirstChildOfClass("Humanoid")
+	if not myRoot or not hum or hum.Health <= 0 then return end
+
+	local murderer = GetPlayerByRole("Murderer")
+	if murderer and murderer.Character and murderer.Character:FindFirstChild("HumanoidRootPart") then
+		local targetRoot = murderer.Character.HumanoidRootPart
+		local dist = (myRoot.Position - targetRoot.Position).Magnitude
+
+		if dist <= CONFIG.AutoShootDistance then
+			if HasLineOfSight(myRoot.Position, targetRoot) then
+				local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+				local gun = nil
+
+				for _, item in ipairs(myChar:GetChildren()) do
+					if IsGun(item) then gun = item break end
+				end
+				if not gun and backpack then
+					for _, item in ipairs(backpack:GetChildren()) do
+						if IsGun(item) then gun = item break end
+					end
+				end
+
+				if gun then
+					lastShootTime = now
+					if gun.Parent ~= myChar then
+						hum:EquipTool(gun)
+						task.wait(0.04)
+					end
+
+					local timeToTarget = dist / CONFIG.BulletSpeed
+					local predictedPos = targetRoot.Position + (targetRoot.Velocity * timeToTarget)
+					Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, predictedPos)
+
+					task.spawn(function()
+						gun:Activate()
+						local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+						VirtualUser:Button1Down(center)
+						VirtualUser:Button1Up(center)
+					end)
+				end
+			end
+		end
+	end
+end
+
+-- ====================================================================
+-- AUTO GUN TP
+-- ====================================================================
+local function TeleportToGun(gunDrop)
+	if isTeleporting or not States.AutoGun then return end
+	if GetRole(LocalPlayer) ~= "Innocent" then return end
+
+	local myChar = LocalPlayer.Character
+	local root = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+	if not root or not hum or hum.Health <= 0 then return end
+
+	local targetPart = gunDrop:IsA("BasePart") and gunDrop or gunDrop:FindFirstChild("Handle") or gunDrop:FindFirstChildWhichIsA("BasePart")
+	if targetPart and targetPart:IsDescendantOf(Workspace) then
+		isTeleporting = true
+
+		local touchTransmitter = targetPart:FindFirstChildWhichIsA("TouchTransmitter", true) or targetPart
+		if firetouchinterest and root and targetPart then
+			SendNotification("AUTO GUN", "Silah çantaya alındı.", 2)
+			pcall(function()
+				firetouchinterest(root, touchTransmitter, 0)
+				task.wait(0.02)
+				firetouchinterest(root, touchTransmitter, 1)
+			end)
+			isTeleporting = false
+			return
+		end
+
+		SendNotification("AUTO GUN", "Silaha ışınlanılıyor...", 2)
+		local originalCFrame = root.CFrame
+
+		task.spawn(function()
+			if not targetPart or not targetPart.Parent then 
+				isTeleporting = false 
+				return 
+			end
+
+			local targetCFrame = targetPart.CFrame + Vector3.new(0, 2, 0)
+			local tweenInfo = TweenInfo.new(CONFIG.GunTpSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local tween = TweenService:Create(root, tweenInfo, {CFrame = targetCFrame})
+			tween:Play()
+			tween.Completed:Wait()
+
+			task.wait(0.12)
+			if root and root.Parent and States.AutoGun and hum.Health > 0 then
+				local returnTween = TweenService:Create(root, tweenInfo, {CFrame = originalCFrame})
+				returnTween:Play()
+				returnTween.Completed:Wait()
+			end
+			isTeleporting = false
+		end)
+	end
+end
+
+local function CheckForDroppedGuns()
+	if not States.AutoGun then return end
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child.Name == "GunDrop" or IsGun(child) then
+			TeleportToGun(child)
+			break
+		end
+	end
+end
+
+Connections.WorkspaceChildAdded = Workspace.ChildAdded:Connect(function(child)
+	if child.Name == "GunDrop" or IsGun(child) then
+		task.wait(0.08)
+		TeleportToGun(child)
+	end
+end)
+
+Connections.SpeedEnforcer = RunService.Heartbeat:Connect(function()
+	if States.SpeedBoost then
+		local char = LocalPlayer.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum and hum.WalkSpeed ~= 22 then
+				hum.WalkSpeed = 22
+			end
+		end
+	end
+end)
+
+-- ====================================================================
+-- GÖRSEL BİREBİR ARAYÜZ MİMARİSİ (NEON RED HUB)
+-- ====================================================================
+local MainGui = Instance.new("ScreenGui")
+MainGui.Name = GuiName
+MainGui.ResetOnSpawn = false
+MainGui.Parent = TargetGuiParent
+
+local MainPanel = Instance.new("Frame")
+MainPanel.Size = UDim2.new(0, 720, 0, 420)
+MainPanel.Position = UDim2.new(0.5, -360, 0.5, -210)
+MainPanel.BackgroundColor3 = THEME.Background
+MainPanel.ClipsDescendants = false
+MainPanel.Parent = MainGui
+
+Instance.new("UICorner", MainPanel).CornerRadius = UDim.new(0, 10)
+
+local PanelStroke = Instance.new("UIStroke")
+PanelStroke.Color = THEME.NeonRed
+PanelStroke.Thickness = 2
+PanelStroke.Transparency = 0.1
+PanelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+PanelStroke.Parent = MainPanel
+
+-- Glow Loop
+task.spawn(function()
+	while MainGui and MainGui.Parent do
+		TweenService:Create(PanelStroke, TweenInfo.new(1.2, Enum.EasingStyle.Sine), {Transparency = 0.6}):Play()
+		task.wait(1.2)
+		if not (MainGui and MainGui.Parent) then break end
+		TweenService:Create(PanelStroke, TweenInfo.new(1.2, Enum.EasingStyle.Sine), {Transparency = 0.1}):Play()
+		task.wait(1.2)
+	end
+end)
+
+-- SÜRÜKLEME SİSTEMİ
+local dragging, dragStart, startPos
+Connections.DragBegan = MainPanel.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = MainPanel.Position
+	end
+end)
+
+Connections.DragEnded = UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
+
+Connections.DragProcess = UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		MainPanel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+-- TOP RIGHT CONTROLS
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 24, 0, 24)
+CloseBtn.Position = UDim2.new(1, -32, 0, 10)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = THEME.NeonRed
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = MainPanel
+
+CloseBtn.MouseButton1Click:Connect(function()
+	pcall(function()
+		RunService:UnbindFromRenderStep("EnserAimbot")
+	end)
+
+	for _, conn in pairs(Connections) do
+		if conn and conn.Connected then
+			conn:Disconnect()
+		end
+	end
+	table.clear(Connections)
+
+	ClearAllESP()
+	SendNotification("SİSTEM", "Script kapatıldı.", 2)
+	task.wait(0.2)
+
+	if MainGui then MainGui:Destroy() end
+	if NotificationGui then NotificationGui:Destroy() end
+end)
+
+-- --------------------------------------------------------------------
+-- SOL MENÜ (SIDEBAR)
+-- --------------------------------------------------------------------
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 200, 1, 0)
+Sidebar.Position = UDim2.new(0, 0, 0, 0)
+Sidebar.BackgroundColor3 = THEME.SidebarBg
+Sidebar.Parent = MainPanel
+
+Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 10)
+
+-- LOGO & HEADER
+local LogoTitle = Instance.new("TextLabel")
+LogoTitle.Size = UDim2.new(1, -20, 0, 25)
+LogoTitle.Position = UDim2.new(0, 15, 0, 15)
+LogoTitle.BackgroundTransparency = 1
+LogoTitle.Text = "ENSER SCRIPT"
+LogoTitle.TextColor3 = THEME.NeonRed
+LogoTitle.Font = Enum.Font.GothamBlack
+LogoTitle.TextSize = 16
+LogoTitle.TextXAlignment = Enum.TextXAlignment.Left
+LogoTitle.Parent = Sidebar
+
+local LogoSub = Instance.new("TextLabel")
+LogoSub.Size = UDim2.new(1, -20, 0, 20)
+LogoSub.Position = UDim2.new(0, 15, 0, 38)
+LogoSub.BackgroundTransparency = 1
+LogoSub.Text = "HUB  <font color=\"rgb(180, 180, 200)\">(v2.1)</font>"
+LogoSub.RichText = true
+LogoSub.TextColor3 = THEME.NeonRed
+LogoSub.Font = Enum.Font.GothamBold
+LogoSub.TextSize = 13
+LogoSub.TextXAlignment = Enum.TextXAlignment.Left
+LogoSub.Parent = Sidebar
+
+-- NAV MENÜ LİSTESİ
+local NavContainer = Instance.new("Frame")
+NavContainer.Size = UDim2.new(1, -20, 0, 250)
+NavContainer.Position = UDim2.new(0, 10, 0, 75)
+NavContainer.BackgroundTransparency = 1
+NavContainer.Parent = Sidebar
+
+local NavLayout = Instance.new("UIListLayout")
+NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NavLayout.Padding = UDim.new(0, 6)
+NavLayout.Parent = NavContainer
+
+local function CreateNavButton(icon, text, order, selected)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 0, 34)
+	btn.BackgroundColor3 = selected and THEME.CardBg or THEME.SidebarBg
+	btn.BackgroundTransparency = selected and 0 or 1
+	btn.Text = "   " .. icon .. "   " .. text
+	btn.TextColor3 = selected and THEME.NeonRed or THEME.SubText
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 11
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	btn.LayoutOrder = order
+	btn.Parent = NavContainer
+
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+	if selected then
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = THEME.NeonRed
+		stroke.Thickness = 1
+		stroke.Transparency = 0.5
+		stroke.Parent = btn
+	end
+end
+
+CreateNavButton("⌂", "HOME", 1, false)
+CreateNavButton("⌕", "EXPLORE SCRIPTS", 2, true) -- Katalog sekmesi aktif
+CreateNavButton("≡", "CATEGORIES", 3, false)
+CreateNavButton("♥", "MY FAVORITES", 4, false)
+CreateNavButton("⚙", "SETTINGS", 5, false)
+
+-- EXIT BUTTON (Bottom Left)
+local ExitBtn = Instance.new("TextButton")
+ExitBtn.Size = UDim2.new(1, -20, 0, 32)
+ExitBtn.Position = UDim2.new(0, 10, 1, -42)
+ExitBtn.BackgroundTransparency = 1
+ExitBtn.Text = "   ➔   EXIT"
+ExitBtn.TextColor3 = THEME.SubText
+ExitBtn.Font = Enum.Font.GothamBold
+ExitBtn.TextSize = 11
+ExitBtn.TextXAlignment = Enum.TextXAlignment.Left
+ExitBtn.Parent = Sidebar
+
+ExitBtn.MouseButton1Click:Connect(function()
+	CloseBtn:Activate()
+end)
+
+-- --------------------------------------------------------------------
+-- MERKEZ KATALOG (SCRIPTS CATALOG)
+-- --------------------------------------------------------------------
+local CatalogTitle = Instance.new("TextLabel")
+CatalogTitle.Size = UDim2.new(0, 300, 0, 25)
+CatalogTitle.Position = UDim2.new(0, 215, 0, 15)
+CatalogTitle.BackgroundTransparency = 1
+CatalogTitle.Text = "SCRIPTS CATALOG"
+CatalogTitle.TextColor3 = THEME.NeonRed
+CatalogTitle.Font = Enum.Font.GothamBlack
+CatalogTitle.TextSize = 16
+CatalogTitle.TextXAlignment = Enum.TextXAlignment.Left
+CatalogTitle.Parent = MainPanel
+
+local CatalogScroll = Instance.new("ScrollingFrame")
+CatalogScroll.Size = UDim2.new(0, 490, 0, 355)
+CatalogScroll.Position = UDim2.new(0, 215, 0, 48)
+CatalogScroll.BackgroundTransparency = 1
+CatalogScroll.ScrollBarThickness = 3
+CatalogScroll.ScrollBarImageColor3 = THEME.NeonRed
+CatalogScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+CatalogScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+CatalogScroll.Parent = MainPanel
+
+local CatalogLayout = Instance.new("UIListLayout")
+CatalogLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CatalogLayout.Padding = UDim.new(0, 10)
+CatalogLayout.Parent = CatalogScroll
+
+-- RIGHT BOTTOM "ACTIVE SCRIPT" PREVIEW WIDGET
+local PreviewWidget = Instance.new("Frame")
+PreviewWidget.Size = UDim2.new(0, 210, 0, 65)
+PreviewWidget.Position = UDim2.new(1, -220, 1, -75)
+PreviewWidget.BackgroundColor3 = THEME.CardBg
+PreviewWidget.ZIndex = 10
+PreviewWidget.Parent = MainPanel
+
+Instance.new("UICorner", PreviewWidget).CornerRadius = UDim.new(0, 8)
+
+local WidgetStroke = Instance.new("UIStroke")
+WidgetStroke.Color = THEME.NeonRed
+WidgetStroke.Thickness = 1.5
+WidgetStroke.Transparency = 0.2
+WidgetStroke.Parent = PreviewWidget
+
+local ActiveDot = Instance.new("Frame")
+ActiveDot.Size = UDim2.new(0, 8, 0, 8)
+ActiveDot.Position = UDim2.new(1, -18, 0, 12)
+ActiveDot.BackgroundColor3 = THEME.InactiveText
+ActiveDot.ZIndex = 11
+ActiveDot.Parent = PreviewWidget
+
+Instance.new("UICorner", ActiveDot).CornerRadius = UDim.new(1, 0)
+
+local WidgetHeader = Instance.new("TextLabel")
+WidgetHeader.Size = UDim2.new(1, -30, 0, 20)
+WidgetHeader.Position = UDim2.new(0, 12, 0, 6)
+WidgetHeader.BackgroundTransparency = 1
+WidgetHeader.Text = "ACTIVE SCRIPT:"
+WidgetHeader.TextColor3 = THEME.Text
+WidgetHeader.Font = Enum.Font.GothamBold
+WidgetHeader.TextSize = 11
+WidgetHeader.TextXAlignment = Enum.TextXAlignment.Left
+WidgetHeader.ZIndex = 11
+WidgetHeader.Parent = PreviewWidget
+
+local WidgetScriptTitle = Instance.new("TextLabel")
+WidgetScriptTitle.Size = UDim2.new(1, -20, 0, 25)
+WidgetScriptTitle.Position = UDim2.new(0, 12, 0, 28)
+WidgetScriptTitle.BackgroundTransparency = 1
+WidgetScriptTitle.Text = "NONE"
+WidgetScriptTitle.TextColor3 = THEME.SubText
+WidgetScriptTitle.Font = Enum.Font.GothamBlack
+WidgetScriptTitle.TextSize = 13
+WidgetScriptTitle.TextXAlignment = Enum.TextXAlignment.Left
+WidgetScriptTitle.ZIndex = 11
+WidgetScriptTitle.Parent = PreviewWidget
+
+local function UpdatePreviewWidget()
+	local activeList = {}
+	for k, v in pairs(States) do
+		if v then table.insert(activeList, k:upper()) end
+	end
+
+	if #activeList > 0 then
+		ActiveDot.BackgroundColor3 = THEME.NeonGreen
+		WidgetScriptTitle.Text = activeList[1]
+		WidgetScriptTitle.TextColor3 = THEME.NeonGreen
+	else
+		ActiveDot.BackgroundColor3 = THEME.InactiveText
+		WidgetScriptTitle.Text = "NONE"
+		WidgetScriptTitle.TextColor3 = THEME.SubText
+	end
+end
+
+-- CATALOG SCRIPT CARD CREATOR
+local function CreateScriptCard(order, titleText, descText, creatorText, stateKey)
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, -10, 0, 72)
+	card.BackgroundColor3 = THEME.CardBg
+	card.LayoutOrder = order
+	card.Parent = CatalogScroll
+
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+
+	local cardStroke = Instance.new("UIStroke")
+	cardStroke.Color = THEME.NeonRed
+	cardStroke.Thickness = 1
+	cardStroke.Transparency = 0.7
+	cardStroke.Parent = card
+
+	-- ICON PLACEHOLDER
+	local iconFrame = Instance.new("Frame")
+	iconFrame.Size = UDim2.new(0, 36, 0, 36)
+	iconFrame.Position = UDim2.new(0, 12, 0, 18)
+	iconFrame.BackgroundTransparency = 1
+	iconFrame.Parent = card
+
+	local iconLbl = Instance.new("TextLabel")
+	iconLbl.Size = UDim2.new(1, 0, 1, 0)
+	iconLbl.BackgroundTransparency = 1
+	iconLbl.Text = "⊕"
+	iconLbl.TextColor3 = THEME.NeonRed
+	iconLbl.Font = Enum.Font.GothamBold
+	iconLbl.TextSize = 22
+	iconLbl.Parent = iconFrame
+
+	-- TITLE & DESC
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.Size = UDim2.new(0, 240, 0, 18)
+	titleLbl.Position = UDim2.new(0, 56, 0, 8)
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Text = titleText
+	titleLbl.TextColor3 = THEME.Text
+	titleLbl.Font = Enum.Font.GothamBold
+	titleLbl.TextSize = 13
+	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	titleLbl.Parent = card
+
+	local descLbl = Instance.new("TextLabel")
+	descLbl.Size = UDim2.new(0, 240, 0, 16)
+	descLbl.Position = UDim2.new(0, 56, 0, 26)
+	descLbl.BackgroundTransparency = 1
+	descLbl.Text = descText
+	descLbl.TextColor3 = THEME.SubText
+	descLbl.Font = Enum.Font.Gotham
+	descLbl.TextSize = 10
+	descLbl.TextXAlignment = Enum.TextXAlignment.Left
+	descLbl.Parent = card
+
+	-- STATUS & CREATOR
+	local statusLbl = Instance.new("TextLabel")
+	statusLbl.Size = UDim2.new(0, 120, 0, 16)
+	statusLbl.Position = UDim2.new(0, 56, 0, 46)
+	statusLbl.BackgroundTransparency = 1
+	statusLbl.Text = "STATUS: <font color=\"rgb(180, 50, 60)\">INACTIVE</font>"
+	statusLbl.RichText = true
+	statusLbl.Font = Enum.Font.GothamBold
+	statusLbl.TextSize = 10
+	statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+	statusLbl.Parent = card
+
+	local creatorLbl = Instance.new("TextLabel")
+	creatorLbl.Size = UDim2.new(0, 100, 0, 16)
+	creatorLbl.Position = UDim2.new(0, 200, 0, 46)
+	creatorLbl.BackgroundTransparency = 1
+	creatorLbl.Text = "Creator: " .. creatorText
+	creatorLbl.TextColor3 = THEME.SubText
+	creatorLbl.Font = Enum.Font.Gotham
+	creatorLbl.TextSize = 10
+	creatorLbl.TextXAlignment = Enum.TextXAlignment.Left
+	creatorLbl.Parent = card
+
+	-- LOAD BUTTON
+	local loadBtn = Instance.new("TextButton")
+	loadBtn.Size = UDim2.new(0, 80, 0, 28)
+	loadBtn.Position = UDim2.new(1, -92, 0, 22)
+	loadBtn.BackgroundColor3 = THEME.NeonRed
+	loadBtn.Text = "LOAD"
+	loadBtn.TextColor3 = THEME.Text
+	loadBtn.Font = Enum.Font.GothamBold
+	loadBtn.TextSize = 11
+	loadBtn.Parent = card
+
+	Instance.new("UICorner", loadBtn).CornerRadius = UDim.new(0, 6)
+
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = THEME.NeonRedGlow
+	btnStroke.Thickness = 1
+	btnStroke.Parent = loadBtn
+
+	loadBtn.MouseButton1Click:Connect(function()
+		States[stateKey] = not States[stateKey]
+		local isOn = States[stateKey]
+
+		if isOn then
+			statusLbl.Text = "STATUS: <font color=\"rgb(0, 255, 120)\">ACTIVE</font>"
+			loadBtn.BackgroundColor3 = THEME.NeonGreen
+			loadBtn.Text = "UNLOAD"
+			cardStroke.Transparency = 0.2
+			cardStroke.Color = THEME.NeonGreen
+		else
+			statusLbl.Text = "STATUS: <font color=\"rgb(180, 50, 60)\">INACTIVE</font>"
+			loadBtn.BackgroundColor3 = THEME.NeonRed
+			loadBtn.Text = "LOAD"
+			cardStroke.Transparency = 0.7
+			cardStroke.Color = THEME.NeonRed
+		end
+
+		SendNotification(titleText, (isOn and "Aktif Edildi." or "Devre Dışı."), 1.5)
+		UpdatePreviewWidget()
+
+		if stateKey == "SpeedBoost" and not isOn then
+			local char = LocalPlayer.Character
+			if char then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum then hum.WalkSpeed = 16 end
+			end
+		elseif stateKey == "ESP" and not isOn then
+			ClearAllESP()
+		elseif stateKey == "AutoGun" and isOn then
+			CheckForDroppedGuns()
+		end
+	end)
+end
+
+-- MODÜLLER
+CreateScriptCard(1, "AIMBOT PRO [v3.0]", "Aimbot scope select out with then aimbot PRO.", "Noma", "AimBot")
+CreateScriptCard(2, "ESP & WALLHACK [v1.5]", "ESP & wallhack for streams and infinite machine.", "Noma", "ESP")
+CreateScriptCard(3, "SPEED HACK [v2.2]", "Speed hack is emmmond to speing.", "Kadrar", "SpeedBoost")
+CreateScriptCard(4, "AUTO SHOOT (SHERIFF) [v2.0]", "Auto shoots murderer with line of sight check.", "Enser", "AutoShoot")
+CreateScriptCard(5, "KILL AURA (MURDER) [v1.8]", "Automatic knife aura for innocent team.", "Enser", "KillAura")
+CreateScriptCard(6, "AUTO GUN TP [v1.2]", "Instantly picks up dropped sheriff gun.", "Rian", "AutoGun")
+
+-- ====================================================================
+-- RENDER LOOP
+-- ====================================================================
+Connections.RenderLoop = RunService.RenderStepped:Connect(function()
+	UpdateESP()
+	ProcessKillAura()
+	ProcessAutoShoot()
+end)
+
+RunService:BindToRenderStep("EnserAimbot", Enum.RenderPriority.Camera.Value + 1, function(dt)
+	ProcessAimbot(dt)
+end)
+
+SendNotification("ENSER HUB", "ENSER SCRIPT HUB (v2.1) Başarıyla Yüklendi!", 3)
